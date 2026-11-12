@@ -1,5 +1,6 @@
 package com.automsgforward.ui
 
+import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,6 +21,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,6 +30,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -48,6 +51,9 @@ fun SettingsScreen(
     repository: SettingsRepository,
     hasSmsPermission: Boolean,
     onRequestSmsPermission: () -> Unit,
+    isBatteryUnrestricted: Boolean,
+    onRequestBatteryExemption: () -> Unit,
+    onOpenAppSettings: () -> Unit,
 ) {
     val saved = remember { repository.load() }
     var form by remember { mutableStateOf(saved) }
@@ -76,6 +82,9 @@ fun SettingsScreen(
 
             if (!hasSmsPermission) {
                 PermissionCard(onRequestSmsPermission)
+            }
+            if (!isBatteryUnrestricted) {
+                BackgroundCard(onRequestBatteryExemption, onOpenAppSettings)
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -146,6 +155,10 @@ fun SettingsScreen(
             Spacer(Modifier.padding(top = 8.dp))
             Text("Last activity", style = MaterialTheme.typography.titleSmall)
             Text(status, style = MaterialTheme.typography.bodySmall)
+
+            if (isBatteryUnrestricted && hasAggressiveBackgroundLimits()) {
+                AutoLaunchTip(onOpenAppSettings)
+            }
         }
     }
 }
@@ -168,6 +181,73 @@ private fun PermissionCard(onRequest: () -> Unit) {
             )
             Button(onClick = onRequest) { Text("Grant permission") }
         }
+    }
+}
+
+@Composable
+private fun BackgroundCard(onAllow: () -> Unit, onOpenAppSettings: () -> Unit) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                "Allow running in background",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onTertiaryContainer,
+            )
+            Text(
+                "Otherwise your phone may pause the app while the screen is locked, and texts " +
+                    "are only forwarded once you open it.",
+                color = MaterialTheme.colorScheme.onTertiaryContainer,
+            )
+            BackgroundSteps(color = MaterialTheme.colorScheme.onTertiaryContainer)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(onClick = onAllow) { Text("Allow") }
+                OutlinedButton(onClick = onOpenAppSettings) { Text("App settings") }
+            }
+        }
+    }
+}
+
+/** Brands whose ROMs block SMS broadcasts to apps unless "Auto launch" is allowed. */
+private val AGGRESSIVE_OEMS = setOf("oneplus", "oppo", "realme", "xiaomi", "redmi", "poco", "vivo", "iqoo", "huawei", "honor")
+
+private fun hasAggressiveBackgroundLimits(): Boolean =
+    Build.MANUFACTURER.lowercase() in AGGRESSIVE_OEMS || Build.BRAND.lowercase() in AGGRESSIVE_OEMS
+
+private val BACKGROUND_STEPS = listOf(
+    "Tap Allow below and confirm, so battery saving doesn't pause the app.",
+    "Tap App settings → Battery usage → turn on \"Allow background activity\" and \"Allow auto launch\" " +
+        "(on Xiaomi: \"Autostart\"; on vivo/Huawei: \"Auto start\" / \"App launch\").",
+    "Don't swipe this app away from the recent apps screen; lock it there with the 🔒 instead.",
+)
+
+@Composable
+private fun BackgroundSteps(color: Color) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        BACKGROUND_STEPS.forEachIndexed { index, step ->
+            Text("${index + 1}. $step", style = MaterialTheme.typography.bodyMedium, color = color)
+        }
+    }
+}
+
+@Composable
+private fun AutoLaunchTip(onOpenAppSettings: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Keep forwarding working while locked", style = MaterialTheme.typography.titleSmall)
+        Text(
+            "${Build.MANUFACTURER} phones also block background apps. Make sure that:",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            "• App settings → Battery usage → \"Allow background activity\" and \"Allow auto launch\" are on\n" +
+                "• This app is not swiped away from recent apps (lock it with the 🔒)",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        TextButton(onClick = onOpenAppSettings) { Text("Open app settings") }
     }
 }
 

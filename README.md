@@ -56,12 +56,42 @@ The app signs in to Gmail with an **app password**, not your normal password.
 
 You're done. The **Last activity** line at the bottom shows the result of the most recent forward.
 
-### 3. Keep it running (important on some phones)
+### 3. Let it run in the background (required on most phones)
 
-Phones from Xiaomi, Huawei, Samsung, OnePlus and some others stop background apps aggressively. To keep forwarding reliable:
+Many phones pause or block background apps to save battery. If that happens, texts that arrive while the
+screen is locked are **held back and only forwarded when you next open the app**. Do all of these steps:
 
-- **Settings → Apps → SMS → Gmail → Battery → Unrestricted**
-- On Xiaomi/MIUI, also turn on **Autostart** for the app.
+1. **Allow background running.** In the app, tap **Allow** in the *Allow running in background* card and
+   confirm. This removes the app from battery optimization.
+2. **Turn on auto launch** (OnePlus, OPPO, realme, Xiaomi, vivo, Huawei, Honor). In the app, tap
+   **App settings** (or go to **Settings → Apps → App management → SMS → Gmail**), then:
+   - **Battery usage → Allow background activity** → on
+   - **Allow auto launch** (自启动) → on
+3. **Don't swipe the app away** from the recent apps screen. On these phones that force-stops it.
+   To be safe, lock it there: open the recent apps screen, pull down on (or long-press) the app's card, and tap the 🔒.
+
+Then lock the phone, wait a few minutes, and send yourself a text to check that it's forwarded right away.
+
+<details>
+<summary>Where these settings are on other phones</summary>
+
+| Phone | Battery | Auto launch |
+| --- | --- | --- |
+| OnePlus / OPPO / realme (ColorOS, OxygenOS) | App info → Battery usage → **Allow background activity** | App info → Battery usage → **Allow auto launch** |
+| Xiaomi / Redmi / POCO (MIUI, HyperOS) | App info → Battery saver → **No restrictions** | App info → **Autostart** |
+| vivo / iQOO (OriginOS, Funtouch) | Settings → Battery → Background power consumption → **Allow** | i Manager → App manager → **Auto start** |
+| Huawei / Honor (EMUI, MagicOS) | Settings → Battery → App launch → turn off **Manage automatically**, then turn on all three switches | (included in the same screen) |
+| Samsung (One UI) | App info → Battery → **Unrestricted** | not needed |
+| Pixel and other stock Android | App info → App battery usage → **Unrestricted** | not needed |
+
+Menu names change between versions; if you can't find one, search Settings for "auto launch", "autostart" or "background".
+The site <https://dontkillmyapp.com> has detailed, per-model instructions.
+</details>
+
+**Why this is needed:** on a OnePlus 13 (ColorOS 16), the system log showed ColorOS freezing the app about
+10 seconds after the screen turned off, and its auto-launch manager refusing to deliver new texts to the app
+(`OplusAppStartupManager: prevent start … SMS_RECEIVED`). The texts were only delivered once the app was
+opened. Apps can't grant themselves these exemptions, so they have to be turned on in Settings.
 
 ## Troubleshooting
 
@@ -69,7 +99,8 @@ Phones from Xiaomi, Huawei, Samsung, OnePlus and some others stop background app
 | --- | --- |
 | "Gmail rejected the login" | Check the address, and create a new app password. 2-Step Verification must be on. |
 | **Send test email** is greyed out | The Gmail address, app password or "Forward to" address is missing or invalid. |
-| Test works but texts aren't forwarded | Check that **Forwarding enabled** is on and saved, that the SMS permission is granted, and that battery mode is *Unrestricted*. |
+| Test works but texts aren't forwarded | Check that **Forwarding enabled** is on and saved, and that the SMS permission is granted. |
+| Texts are only forwarded when I open the app, or when the screen is on | The phone is pausing the app in the background. Follow every step in [Let it run in the background](#3-let-it-run-in-the-background-required-on-most-phones), especially **Auto launch**, and don't swipe the app away. |
 | Status says "Retrying" | The phone has no internet, or Gmail is unreachable. It will retry on its own. |
 | Some messages never arrive | RCS / chat messages (the "Chat" feature in Google Messages) are not SMS and are not forwarded. |
 
@@ -78,6 +109,8 @@ If you no longer use the app, also revoke its app password at <https://myaccount
 
 ## Limits
 
+- After the phone restarts, Android holds all incoming texts until you unlock it for the first time.
+  They are forwarded as soon as you unlock.
 - Very long texts are cut off at 2,500 characters.
 - Only SMS is forwarded. MMS (pictures) and RCS chat messages are not.
 
