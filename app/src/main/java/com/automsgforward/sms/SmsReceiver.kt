@@ -7,6 +7,7 @@ import android.provider.Telephony
 import android.util.Log
 import com.automsgforward.data.SettingsRepository
 import com.automsgforward.mail.ForwardWorker
+import com.automsgforward.service.KeepAliveService
 
 class SmsReceiver : BroadcastReceiver() {
 
@@ -30,6 +31,8 @@ class SmsReceiver : BroadcastReceiver() {
             }
 
         assembleMessages(parts).forEach { ForwardWorker.enqueue(context, it) }
+        // Revive the keep-alive service if the OS killed it; harmless if already running.
+        KeepAliveService.sync(context)
     }
 
     private companion object {

@@ -11,6 +11,10 @@ or to get the texts from a second SIM or a spare phone you leave at home.
 
 - **Automatic:** forwards each new SMS in the background, even when the app is closed.
 - **Reliable:** if the phone is offline, the message waits for a connection and is retried (up to 10 tries, with growing delays).
+- **Catches up:** if a text arrives while the app isn't running (for example right after the phone restarts),
+  it is picked up from the inbox and forwarded as soon as the app starts again.
+- **Survives restarts:** the app starts itself after the phone reboots and keeps running in the background,
+  shown by a silent *Forwarding texts to Gmail* notification.
 - **Complete:** long texts that arrive in several parts are joined back into one email.
 - **No duplicates:** a text the system delivers twice is only emailed once.
 - **Secure:** your Gmail app password is encrypted with a key held in the Android Keystore. Mail goes over TLS to `smtp.gmail.com`.
@@ -48,13 +52,16 @@ The app signs in to Gmail with an **app password**, not your normal password.
 
 ### 2. Configure the app
 
-1. Open **SMS → Gmail** and tap **Grant permission**, then **Allow** (the app needs the *Receive SMS* permission).
+1. Open **SMS → Gmail** and tap **Grant permission**, then **Allow** each prompt. The app needs SMS access
+   (to receive new texts, and to read any it missed from the inbox) and notifications (for the "running" notice).
 2. Enter **Your Gmail address** and the **Gmail app password**.
 3. *(Optional)* Enter a different **Forward to** address. Leave it blank to send the emails to yourself.
 4. Tap **Send test email** and check that it arrives (look in Spam too).
 5. Turn on **Forwarding enabled** and tap **Save**.
 
 You're done. The **Last activity** line at the bottom shows the result of the most recent forward.
+A silent **Forwarding texts to Gmail** notification stays in the notification shade while forwarding is on.
+It keeps the app running so the phone keeps delivering texts to it; you can collapse it, but don't block it.
 
 ### 3. Let it run in the background (required on most phones)
 
@@ -67,7 +74,8 @@ screen is locked are **held back and only forwarded when you next open the app**
    **App settings** (or go to **Settings → Apps → App management → SMS → Gmail**), then:
    - **Battery usage → Allow background activity** → on
    - **Allow auto launch** (自启动) → on
-3. **Don't swipe the app away** from the recent apps screen. On these phones that force-stops it.
+3. **Keep Wi-Fi or mobile data on.** Texts that arrive offline are queued and sent once the phone is back online.
+4. **Don't swipe the app away** from the recent apps screen. On these phones that force-stops it.
    To be safe, lock it there: open the recent apps screen, pull down on (or long-press) the app's card, and tap the 🔒.
 
 Then lock the phone, wait a few minutes, and send yourself a text to check that it's forwarded right away.
@@ -93,6 +101,13 @@ The site <https://dontkillmyapp.com> has detailed, per-model instructions.
 (`OplusAppStartupManager: prevent start … SMS_RECEIVED`). The texts were only delivered once the app was
 opened. Apps can't grant themselves these exemptions, so they have to be turned on in Settings.
 
+A second test found that ColorOS only delivers a text to the app if the app's process is already running
+(`OplusAppStartupManager: skip broadcast for proc does not exist … SMS_RECEIVED`). A frozen process is fine,
+but after the phone restarted overnight the process was gone and every text was skipped. The app therefore
+starts itself after a reboot, keeps a foreground service running, and reads the inbox for anything it missed.
+After a reboot ColorOS still delays the app's start by a few minutes; texts that arrive during that window
+are forwarded by the inbox catch-up once the app starts.
+
 ## Troubleshooting
 
 | What you see | What to do |
@@ -100,6 +115,7 @@ opened. Apps can't grant themselves these exemptions, so they have to be turned 
 | "Gmail rejected the login" | Check the address, and create a new app password. 2-Step Verification must be on. |
 | **Send test email** is greyed out | The Gmail address, app password or "Forward to" address is missing or invalid. |
 | Test works but texts aren't forwarded | Check that **Forwarding enabled** is on and saved, and that the SMS permission is granted. |
+| Status says "Queued … sends when the phone is online" | The phone has no internet. Turn on Wi-Fi or mobile data; the queued texts are sent automatically. |
 | Texts are only forwarded when I open the app, or when the screen is on | The phone is pausing the app in the background. Follow every step in [Let it run in the background](#3-let-it-run-in-the-background-required-on-most-phones), especially **Auto launch**, and don't swipe the app away. |
 | Status says "Retrying" | The phone has no internet, or Gmail is unreachable. It will retry on its own. |
 | Some messages never arrive | RCS / chat messages (the "Chat" feature in Google Messages) are not SMS and are not forwarded. |
@@ -110,7 +126,11 @@ If you no longer use the app, also revoke its app password at <https://myaccount
 ## Limits
 
 - After the phone restarts, Android holds all incoming texts until you unlock it for the first time.
-  They are forwarded as soon as you unlock.
+  They are forwarded shortly after you unlock (on ColorOS, within a few minutes).
+- The inbox catch-up only sees texts your messaging app saves to the standard SMS inbox. Some messaging
+  apps hide or auto-delete one-time verification codes; if one of those arrives while the app isn't running,
+  it can't be recovered.
+- When you first grant SMS access, only texts that arrive from then on are forwarded, not your old messages.
 - Very long texts are cut off at 2,500 characters.
 - Only SMS is forwarded. MMS (pictures) and RCS chat messages are not.
 
@@ -151,6 +171,9 @@ SMS_RECEIVED broadcast ──► SmsReceiver ──► ForwardWorker (WorkManage
 | File | Role |
 | --- | --- |
 | `sms/SmsReceiver.kt` | Receives the system broadcast and joins multipart messages |
+| `sms/InboxCatchUp.kt`, `sms/CatchUp.kt` | On every app start, forwards inbox texts that arrived while the app wasn't running |
+| `service/KeepAliveService.kt` | Foreground service that keeps the process alive so ROMs keep delivering texts |
+| `service/BootReceiver.kt` | Starts the service after a reboot or an app update |
 | `mail/ForwardWorker.kt` | Background job: builds the email, sends it, retries on failure |
 | `mail/GmailSender.kt` | SMTP client (JavaMail for Android) |
 | `mail/EmailContent.kt` | Formats the subject and body |

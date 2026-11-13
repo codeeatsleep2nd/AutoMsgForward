@@ -14,6 +14,7 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.automsgforward.data.SettingsRepository
 import com.automsgforward.sms.IncomingSms
+import com.automsgforward.sms.forwardKey
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
@@ -28,6 +29,9 @@ class ForwardWorker(
         val repo = SettingsRepository(applicationContext)
         val settings = repo.load()
         val sms = inputData.toSms() ?: return Result.failure()
+        val key = inputData.getString(KEY_FORWARD_KEY) ?: forwardKey(sms)
+        // The broadcast and the inbox catch-up can both enqueue the same text.
+        if (key in repo.forwardedKeys()) return Result.success()
 
         if (!settings.isConfigured) {
             repo.recordStatus("Not forwarded (${sms.sender}): Gmail account not configured")
@@ -40,6 +44,7 @@ class ForwardWorker(
                 GmailSender(settings.gmailAddress, settings.appPassword)
                     .send(settings.effectiveRecipient, email)
             }
+            repo.markForwarded(key)
             repo.recordStatus("Forwarded SMS from ${sms.sender}")
             Result.success()
         } catch (e: AuthenticationFailedException) {
@@ -68,14 +73,18 @@ class ForwardWorker(
         private const val KEY_SENDER = "sender"
         private const val KEY_BODY = "body"
         private const val KEY_TIMESTAMP = "timestamp"
+        private const val KEY_FORWARD_KEY = "forward_key"
 
         fun enqueue(context: Context, sms: IncomingSms) {
+            // Computed from the full body, before truncation, so it matches the inbox copy.
+            val key = forwardKey(sms)
             val request = OneTimeWorkRequestBuilder<ForwardWorker>()
                 .setInputData(
                     workDataOf(
                         KEY_SENDER to sms.sender,
                         KEY_BODY to sms.body.take(MAX_BODY_CHARS),
                         KEY_TIMESTAMP to sms.timestampMillis,
+                        KEY_FORWARD_KEY to key,
                     ),
                 )
                 .setConstraints(
@@ -84,8 +93,11 @@ class ForwardWorker(
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, BACKOFF_SECONDS, TimeUnit.SECONDS)
                 .build()
 
-            // Unique name dedupes a redelivered broadcast for the same message.
-            val uniqueName = "forward-${sms.sender}-${sms.timestampMillis}-${sms.body.hashCode()}"
+            // Unique name dedupes a redelivered broadcast, or a catch-up racing the broadcast.
+            val uniqueName = "forward-$key"
+            // Overwritten by the worker once it runs; until then, explain why nothing was sent.
+            SettingsRepository(context)
+                .recordStatus("Queued SMS from ${sms.sender} — sends when the phone is online")
             WorkManager.getInstance(context)
                 .enqueueUniqueWork(uniqueName, ExistingWorkPolicy.KEEP, request)
         }

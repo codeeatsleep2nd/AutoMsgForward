@@ -35,6 +35,26 @@ class SettingsRepository(context: Context) {
         prefs.edit().putString(KEY_STATUS, stamped).apply()
     }
 
+    /** Inbox `date` of the newest message the catch-up sweep has looked at; null until first sweep. */
+    fun catchUpWatermark(): Long? =
+        if (prefs.contains(KEY_WATERMARK)) prefs.getLong(KEY_WATERMARK, 0) else null
+
+    fun setCatchUpWatermark(millis: Long) {
+        prefs.edit().putLong(KEY_WATERMARK, millis).apply()
+    }
+
+    /** Keys (see [com.automsgforward.sms.forwardKey]) of recently forwarded messages. */
+    fun forwardedKeys(): Set<String> =
+        prefs.getString(KEY_FORWARDED, null)?.split(KEY_SEPARATOR)?.filter { it.isNotEmpty() }?.toSet()
+            ?: emptySet()
+
+    @Synchronized
+    fun markForwarded(key: String) {
+        val current = prefs.getString(KEY_FORWARDED, null)?.split(KEY_SEPARATOR).orEmpty()
+        val updated = (current.filter { it.isNotEmpty() && it != key } + key).takeLast(MAX_FORWARDED_KEYS)
+        prefs.edit().putString(KEY_FORWARDED, updated.joinToString(KEY_SEPARATOR)).commit()
+    }
+
     fun statusFlow(): Flow<String> = callbackFlow {
         trySend(prefs.getString(KEY_STATUS, NO_STATUS) ?: NO_STATUS)
         val listener = SharedPreferences.OnSharedPreferenceChangeListener { p, key ->
@@ -58,6 +78,10 @@ class SettingsRepository(context: Context) {
         const val KEY_PASSWORD = "app_password_enc"
         const val KEY_RECIPIENT = "recipient"
         const val KEY_STATUS = "last_status"
+        const val KEY_WATERMARK = "catch_up_watermark"
+        const val KEY_FORWARDED = "forwarded_keys"
+        const val KEY_SEPARATOR = "\n"
+        const val MAX_FORWARDED_KEYS = 300
         const val NO_STATUS = "Nothing forwarded yet"
     }
 }

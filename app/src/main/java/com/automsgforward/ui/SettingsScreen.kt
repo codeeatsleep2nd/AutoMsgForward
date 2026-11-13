@@ -54,6 +54,7 @@ fun SettingsScreen(
     isBatteryUnrestricted: Boolean,
     onRequestBatteryExemption: () -> Unit,
     onOpenAppSettings: () -> Unit,
+    onSettingsSaved: () -> Unit,
 ) {
     val saved = remember { repository.load() }
     var form by remember { mutableStateOf(saved) }
@@ -132,6 +133,7 @@ fun SettingsScreen(
                     enabled = draft.isConfigured || !draft.enabled,
                     onClick = {
                         repository.save(draft)
+                        onSettingsSaved()
                         feedback = "Settings saved."
                     },
                 ) { Text("Save") }
@@ -176,7 +178,8 @@ private fun PermissionCard(onRequest: () -> Unit) {
                 color = MaterialTheme.colorScheme.onErrorContainer,
             )
             Text(
-                "Grant \"Receive SMS\" so the app can see new text messages.",
+                "Allow SMS access so the app can see new texts, and forward any that arrived " +
+                    "while it wasn't running (for example right after the phone restarted).",
                 color = MaterialTheme.colorScheme.onErrorContainer,
             )
             Button(onClick = onRequest) { Text("Grant permission") }
@@ -220,6 +223,7 @@ private val BACKGROUND_STEPS = listOf(
     "Tap Allow below and confirm, so battery saving doesn't pause the app.",
     "Tap App settings → Battery usage → turn on \"Allow background activity\" and \"Allow auto launch\" " +
         "(on Xiaomi: \"Autostart\"; on vivo/Huawei: \"Auto start\" / \"App launch\").",
+    "Keep Wi-Fi or mobile data on. Texts that arrive offline are sent once the phone is back online.",
     "Don't swipe this app away from the recent apps screen; lock it there with the 🔒 instead.",
 )
 
@@ -243,6 +247,8 @@ private fun AutoLaunchTip(onOpenAppSettings: () -> Unit) {
         )
         Text(
             "• App settings → Battery usage → \"Allow background activity\" and \"Allow auto launch\" are on\n" +
+                "• Wi-Fi or mobile data is on, so texts can be sent\n" +
+                "• The \"Forwarding texts to Gmail\" notification isn't blocked\n" +
                 "• This app is not swiped away from recent apps (lock it with the 🔒)",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
