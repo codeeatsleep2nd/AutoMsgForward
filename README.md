@@ -58,10 +58,21 @@ The app signs in to Gmail with an **app password**, not your normal password.
    (to receive new texts, and to read any it missed from the inbox) and notifications (for the "running" notice).
 2. Enter **Your Gmail address** and the **Gmail app password**.
 3. *(Optional)* Enter a different **Forward to** address. Leave it blank to send the emails to yourself.
-4. Tap **Send test email** and check that it arrives (look in Spam too).
-5. Turn on **Forwarding enabled** and tap **Save**.
+4. Tap **Save**. The form folds into a card showing your account, and **Forwarding** turns on.
+5. Tap **Send test email** and check that it arrives (look in Spam too). The card changes to **✓ Connected**.
 
-You're done. The **Last activity** line at the bottom shows the result of the most recent forward.
+You're done. The card at the top always shows the account's state:
+
+| Card | Meaning |
+| --- | --- |
+| **Not set up** | No account saved yet. |
+| **Saved, not verified yet** | Saved, but Gmail hasn't accepted a login since. Send a test email. |
+| **✓ Connected** | Gmail accepted the last test email or forward. Shows when it was verified. |
+| **✕ Gmail rejected the login** | Texts aren't being forwarded. Tap **Change** and enter a new app password. |
+| **Forwarding is off** | The **Forwarding** switch is off. |
+
+To use a different account or app password, tap **Change**. Changing either resets the card to *Saved, not verified yet*.
+The **Last activity** line at the bottom shows the result of the most recent forward.
 A silent **Forwarding texts to Gmail** notification stays in the notification shade while forwarding is on.
 It keeps the app running so the phone keeps delivering texts to it; you can collapse it, but don't block it.
 
@@ -114,15 +125,16 @@ are forwarded by the inbox catch-up once the app starts.
 
 | What you see | What to do |
 | --- | --- |
-| "Gmail rejected the login" | Check the address, and create a new app password. 2-Step Verification must be on. |
-| **Send test email** is greyed out | The Gmail address, app password or "Forward to" address is missing or invalid. |
-| Test works but texts aren't forwarded | Check that **Forwarding enabled** is on and saved, and that the SMS permission is granted. |
+| Red card: "Gmail rejected the login" | Tap **Change**, check the address, and enter a new app password. 2-Step Verification must be on. |
+| Card stays on "Saved, not verified yet" | Tap **Send test email**. If it fails with a network error, check the internet connection and try again. |
+| **Send test email** or **Save** is greyed out | The Gmail address, app password or "Forward to" address is missing or invalid. **Save** also stays grey until you change something. |
+| Test works but texts aren't forwarded | Check that the **Forwarding** switch is on and the SMS permission is granted. |
 | Status says "Queued … sends when the phone is online" | The phone has no internet. Turn on Wi-Fi or mobile data; the queued texts are sent automatically. |
 | Texts are only forwarded when I open the app, or when the screen is on | The phone is pausing the app in the background. Follow every step in [Let it run in the background](#3-let-it-run-in-the-background-required-on-most-phones), especially **Auto launch**, and don't swipe the app away. |
 | Status says "Retrying" | The phone has no internet, or Gmail is unreachable. It will retry on its own. |
 | Some messages never arrive | RCS / chat messages (the "Chat" feature in Google Messages) are not SMS and are not forwarded. |
 
-To stop forwarding, turn off **Forwarding enabled** and tap **Save**, or uninstall the app.
+To stop forwarding, turn off the **Forwarding** switch, or uninstall the app.
 If you no longer use the app, also revoke its app password at <https://myaccount.google.com/apppasswords>.
 
 ## Limits
@@ -176,8 +188,11 @@ SMS_RECEIVED broadcast ──► SmsReceiver ──► ForwardWorker (WorkManage
 | `sms/InboxCatchUp.kt`, `sms/CatchUp.kt` | On every app start, forwards inbox texts that arrived while the app wasn't running |
 | `service/KeepAliveService.kt` | Foreground service that keeps the process alive so ROMs keep delivering texts |
 | `service/BootReceiver.kt` | Starts the service after a reboot or an app update |
+| `service/WatchdogWorker.kt` | Every 15 minutes, restarts the service if it was killed and catches up on missed texts |
 | `mail/ForwardWorker.kt` | Background job: builds the email, sends it, retries on failure |
 | `mail/GmailSender.kt` | SMTP client (JavaMail for Android) |
 | `mail/EmailContent.kt` | Formats the subject and body |
 | `data/SettingsRepository.kt` | Stores settings; the app password is encrypted via `SecretCipher.kt` |
+| `data/AccountStatus.kt` | Decides what the account card shows, from the saved account and the last Gmail login result |
 | `ui/SettingsScreen.kt` | The settings screen (Jetpack Compose) |
+| `ui/AccountCard.kt` | The account status card at the top of the screen |
