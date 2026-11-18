@@ -55,10 +55,31 @@ class SettingsRepository(context: Context) {
         prefs.edit().putString(KEY_FORWARDED, updated.joinToString(KEY_SEPARATOR)).commit()
     }
 
-    fun statusFlow(): Flow<String> = callbackFlow {
-        trySend(prefs.getString(KEY_STATUS, NO_STATUS) ?: NO_STATUS)
-        val listener = SharedPreferences.OnSharedPreferenceChangeListener { p, key ->
-            if (key == KEY_STATUS) trySend(p.getString(KEY_STATUS, NO_STATUS) ?: NO_STATUS)
+    fun statusFlow(): Flow<String> =
+        observe(setOf(KEY_STATUS)) { prefs.getString(KEY_STATUS, NO_STATUS) ?: NO_STATUS }
+
+    /** Remember whether Gmail accepted [settings]' login, for the account status card. */
+    fun recordLoginCheck(settings: ForwardSettings, succeeded: Boolean) {
+        prefs.edit()
+            .putString(KEY_CHECK_FINGERPRINT, accountFingerprint(settings))
+            .putLong(KEY_CHECK_AT, System.currentTimeMillis())
+            .putBoolean(KEY_CHECK_OK, succeeded)
+            .apply()
+    }
+
+    fun lastLoginCheck(): LoginCheck? {
+        val fingerprint = prefs.getString(KEY_CHECK_FINGERPRINT, null) ?: return null
+        return LoginCheck(fingerprint, prefs.getLong(KEY_CHECK_AT, 0), prefs.getBoolean(KEY_CHECK_OK, false))
+    }
+
+    fun lastLoginCheckFlow(): Flow<LoginCheck?> =
+        observe(setOf(KEY_CHECK_FINGERPRINT, KEY_CHECK_AT, KEY_CHECK_OK)) { lastLoginCheck() }
+
+    /** Emits [read] now and again whenever one of [keys] changes. */
+    private fun <T> observe(keys: Set<String>, read: () -> T): Flow<T> = callbackFlow {
+        trySend(read())
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key in keys) trySend(read())
         }
         prefs.registerOnSharedPreferenceChangeListener(listener)
         awaitClose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
@@ -82,6 +103,9 @@ class SettingsRepository(context: Context) {
         const val KEY_FORWARDED = "forwarded_keys"
         const val KEY_SEPARATOR = "\n"
         const val MAX_FORWARDED_KEYS = 300
+        const val KEY_CHECK_FINGERPRINT = "login_check_fingerprint"
+        const val KEY_CHECK_AT = "login_check_at"
+        const val KEY_CHECK_OK = "login_check_ok"
         const val NO_STATUS = "Nothing forwarded yet"
     }
 }

@@ -45,10 +45,12 @@ class ForwardWorker(
                     .send(settings.effectiveRecipient, email)
             }
             repo.markForwarded(key)
+            repo.recordLoginCheck(settings, succeeded = true)
             repo.recordStatus("Forwarded SMS from ${sms.sender}")
             Result.success()
         } catch (e: AuthenticationFailedException) {
             Log.e(TAG, "Gmail rejected credentials", e)
+            repo.recordLoginCheck(settings, succeeded = false)
             repo.recordStatus("Failed (${sms.sender}): Gmail rejected the app password")
             Result.failure()
         } catch (e: Exception) {

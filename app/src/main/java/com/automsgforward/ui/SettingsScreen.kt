@@ -36,6 +36,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.automsgforward.data.ForwardSettings
+import com.automsgforward.data.accountStatus
+import com.automsgforward.data.hasUnsavedChanges
 import com.automsgforward.data.SettingsRepository
 import com.automsgforward.data.isValidEmail
 import com.automsgforward.data.normalizeAppPassword
@@ -56,15 +58,35 @@ fun SettingsScreen(
     onOpenAppSettings: () -> Unit,
     onSettingsSaved: () -> Unit,
 ) {
-    val saved = remember { repository.load() }
+    var saved by remember { mutableStateOf(repository.load()) }
     var form by remember { mutableStateOf(saved) }
+    var isEditing by remember { mutableStateOf(!saved.isConfigured) }
     var feedback by remember { mutableStateOf<String?>(null) }
     var isSendingTest by remember { mutableStateOf(false) }
     val status by remember { repository.statusFlow() }
         .collectAsStateWithLifecycle(initialValue = "")
+    val lastCheck by remember { repository.lastLoginCheckFlow() }
+        .collectAsStateWithLifecycle(initialValue = repository.lastLoginCheck())
     val scope = rememberCoroutineScope()
 
-    val draft = form.copy(appPassword = normalizeAppPassword(form.appPassword))
+    fun persist(settings: ForwardSettings) {
+        repository.save(settings)
+        saved = repository.load()
+        onSettingsSaved()
+    }
+
+    fun sendTest(settings: ForwardSettings) {
+        isSendingTest = true
+        feedback = "Sending test email…"
+        scope.launch {
+            val result = sendTestEmail(settings)
+            result.loginAccepted?.let { repository.recordLoginCheck(settings, it) }
+            // A rejected login of the saved account already turns its card red; don't repeat it.
+            val cardShowsIt = result.loginAccepted == false && settings == saved
+            feedback = result.message.takeUnless { cardShowsIt }
+            isSendingTest = false
+        }
+    }
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
@@ -88,66 +110,41 @@ fun SettingsScreen(
                 BackgroundCard(onRequestBatteryExemption, onOpenAppSettings)
             }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Forwarding enabled", modifier = Modifier.weight(1f))
-                Switch(
-                    checked = form.enabled,
-                    onCheckedChange = { form = form.copy(enabled = it) },
+            AccountCard(
+                status = accountStatus(saved, lastCheck),
+                isSendingTest = isSendingTest,
+                onChange = { isEditing = true; feedback = null }.takeUnless { isEditing },
+                onTest = { sendTest(saved) }.takeUnless { isEditing },
+            )
+
+            ForwardingSwitch(
+                checked = saved.enabled,
+                canEnable = saved.isConfigured,
+                onCheckedChange = { persist(saved.copy(enabled = it)) },
+            )
+
+            if (isEditing) {
+                AccountForm(
+                    form = form,
+                    onFormChange = { form = it },
+                    hasUnsavedChanges = hasUnsavedChanges(saved, form),
+                    isSendingTest = isSendingTest,
+                    onSave = {
+                        // Saving the first account turns forwarding on; that's why it was entered.
+                        persist(
+                            form.copy(
+                                appPassword = normalizeAppPassword(form.appPassword),
+                                enabled = saved.enabled || !saved.isConfigured,
+                            ),
+                        )
+                        form = saved
+                        isEditing = false
+                        feedback = "Account saved."
+                    },
+                    onCancel = { form = saved; isEditing = false; feedback = null }
+                        .takeIf { saved.isConfigured },
+                    onTest = { sendTest(form.copy(appPassword = normalizeAppPassword(form.appPassword))) },
                 )
-            }
-
-            OutlinedTextField(
-                value = form.gmailAddress,
-                onValueChange = { form = form.copy(gmailAddress = it) },
-                label = { Text("Your Gmail address") },
-                singleLine = true,
-                isError = form.gmailAddress.isNotBlank() && !isValidEmail(form.gmailAddress),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            OutlinedTextField(
-                value = form.appPassword,
-                onValueChange = { form = form.copy(appPassword = it) },
-                label = { Text("Gmail app password") },
-                supportingText = {
-                    Text("Create one at myaccount.google.com/apppasswords (requires 2-Step Verification).")
-                },
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            OutlinedTextField(
-                value = form.recipient,
-                onValueChange = { form = form.copy(recipient = it) },
-                label = { Text("Forward to (optional)") },
-                supportingText = { Text("Leave blank to send to your own Gmail address.") },
-                singleLine = true,
-                isError = form.recipient.isNotBlank() && !isValidEmail(form.recipient),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(
-                    enabled = draft.isConfigured || !draft.enabled,
-                    onClick = {
-                        repository.save(draft)
-                        onSettingsSaved()
-                        feedback = "Settings saved."
-                    },
-                ) { Text("Save") }
-                OutlinedButton(
-                    enabled = draft.isConfigured && !isSendingTest,
-                    onClick = {
-                        isSendingTest = true
-                        feedback = "Sending test email…"
-                        scope.launch {
-                            feedback = sendTestEmail(draft)
-                            isSendingTest = false
-                        }
-                    },
-                ) { Text(if (isSendingTest) "Sending…" else "Send test email") }
             }
 
             feedback?.let {
@@ -161,6 +158,84 @@ fun SettingsScreen(
             if (isBatteryUnrestricted && hasAggressiveBackgroundLimits()) {
                 AutoLaunchTip(onOpenAppSettings)
             }
+        }
+    }
+}
+
+@Composable
+private fun ForwardingSwitch(checked: Boolean, canEnable: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("Forwarding")
+            if (!canEnable) {
+                Text(
+                    "Save a Gmail account first.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Switch(checked = checked, enabled = canEnable || checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+@Composable
+private fun AccountForm(
+    form: ForwardSettings,
+    onFormChange: (ForwardSettings) -> Unit,
+    hasUnsavedChanges: Boolean,
+    isSendingTest: Boolean,
+    onSave: () -> Unit,
+    onCancel: (() -> Unit)?,
+    onTest: () -> Unit,
+) {
+    val canSend = form.copy(appPassword = normalizeAppPassword(form.appPassword)).isConfigured
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        OutlinedTextField(
+            value = form.gmailAddress,
+            onValueChange = { onFormChange(form.copy(gmailAddress = it)) },
+            label = { Text("Your Gmail address") },
+            singleLine = true,
+            isError = form.gmailAddress.isNotBlank() && !isValidEmail(form.gmailAddress),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = form.appPassword,
+            onValueChange = { onFormChange(form.copy(appPassword = it)) },
+            label = { Text("Gmail app password") },
+            supportingText = {
+                Text("Create one at myaccount.google.com/apppasswords (requires 2-Step Verification).")
+            },
+            singleLine = true,
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = form.recipient,
+            onValueChange = { onFormChange(form.copy(recipient = it)) },
+            label = { Text("Forward to (optional)") },
+            supportingText = { Text("Leave blank to send to your own Gmail address.") },
+            singleLine = true,
+            isError = form.recipient.isNotBlank() && !isValidEmail(form.recipient),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        if (hasUnsavedChanges) {
+            Text(
+                "Unsaved changes",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.tertiary,
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Button(enabled = canSend && hasUnsavedChanges, onClick = onSave) { Text("Save") }
+            OutlinedButton(enabled = canSend && !isSendingTest, onClick = onTest) {
+                Text(if (isSendingTest) "Sending…" else "Send test email")
+            }
+            onCancel?.let { TextButton(onClick = it) { Text("Cancel") } }
         }
     }
 }
@@ -257,7 +332,10 @@ private fun AutoLaunchTip(onOpenAppSettings: () -> Unit) {
     }
 }
 
-private suspend fun sendTestEmail(settings: ForwardSettings): String = withContext(Dispatchers.IO) {
+/** [loginAccepted] is null when the attempt says nothing about the login (e.g. offline). */
+private data class TestResult(val message: String, val loginAccepted: Boolean?)
+
+private suspend fun sendTestEmail(settings: ForwardSettings): TestResult = withContext(Dispatchers.IO) {
     try {
         GmailSender(settings.gmailAddress.trim(), settings.appPassword).send(
             to = settings.effectiveRecipient.trim(),
@@ -266,10 +344,10 @@ private suspend fun sendTestEmail(settings: ForwardSettings): String = withConte
                 body = "Your SMS forwarder is configured correctly.",
             ),
         )
-        "Test email sent to ${settings.effectiveRecipient.trim()}."
+        TestResult("Test email sent to ${settings.effectiveRecipient.trim()}.", loginAccepted = true)
     } catch (e: AuthenticationFailedException) {
-        "Gmail rejected the login. Check the address and app password."
+        TestResult("Gmail rejected the login. Check the address and app password.", loginAccepted = false)
     } catch (e: Exception) {
-        "Test failed: ${e.message ?: e.javaClass.simpleName}"
+        TestResult("Test failed: ${e.message ?: e.javaClass.simpleName}", loginAccepted = null)
     }
 }
