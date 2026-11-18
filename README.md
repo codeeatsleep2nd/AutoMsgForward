@@ -1,5 +1,7 @@
 # SMS → Gmail (AutoMsgForward)
 
+English | [简体中文](README.zh-CN.md)
+
 An Android app that forwards every text message your phone receives to your Gmail inbox, automatically.
 
 Use it to read one-time codes and bank alerts on your computer, to keep a searchable archive of your texts in Gmail,
