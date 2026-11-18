@@ -15,6 +15,8 @@ or to get the texts from a second SIM or a spare phone you leave at home.
   it is picked up from the inbox and forwarded as soon as the app starts again.
 - **Survives restarts:** the app starts itself after the phone reboots and keeps running in the background,
   shown by a silent *Forwarding texts to Gmail* notification.
+- **Self-healing:** a check every 15 minutes restarts forwarding if the phone killed the app,
+  and forwards any texts that arrived while it was down.
 - **Complete:** long texts that arrive in several parts are joined back into one email.
 - **No duplicates:** a text the system delivers twice is only emailed once.
 - **Secure:** your Gmail app password is encrypted with a key held in the Android Keystore. Mail goes over TLS to `smtp.gmail.com`.

@@ -81,13 +81,18 @@ class KeepAliveService : Service() {
         private const val CHANNEL_ID = "keep_alive"
         private const val NOTIFICATION_ID = 1
 
-        /** Start (or stop) the service to match the saved "Forwarding enabled" setting. */
+        /**
+         * Start (or stop) the service and its watchdog to match the saved
+         * "Forwarding enabled" setting.
+         */
         fun sync(context: Context) {
             val intent = Intent(context, KeepAliveService::class.java)
             if (!SettingsRepository(context).load().enabled) {
                 context.stopService(intent)
+                WatchdogWorker.cancel(context)
                 return
             }
+            WatchdogWorker.schedule(context)
             runCatching { ContextCompat.startForegroundService(context, intent) }
                 .onFailure { Log.w(TAG, "Could not start keep-alive service", it) }
         }
